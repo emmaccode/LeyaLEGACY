@@ -11,9 +11,9 @@ SECTION .data
     lambdaSymbol: db "lambda",0
 
     beginSymbol: db "begin",0
-    defineSymbol: db "set",0
+    defineSymbol: db "var",0
     letSymbol: db "let",0
-    setSymbol: db "var",0
+    setSymbol: db "set",0
 
 
 
