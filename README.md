@@ -1,2 +1,1 @@
-# Leya
-Leya - Free your mathematics
+<div align="center"><img src="https://github.com/emmettgb/Leya/blob/master/Leya_Round.png" width="400" /><h3>Still working on it.... Assembly is hard, you know... Why don't you do it instead?</h3></div>
