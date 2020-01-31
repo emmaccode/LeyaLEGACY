@@ -12,7 +12,7 @@ while true ; do
      echo "| Emmett         |"
      echo "|    Boudreau    |"
      echo "------------------"
-     while read -p "$USER in Leya -}" line;do ./interp <<< $line;echo; done
+     while read -p "$USER in Leya 🦩 } " line;do ~/.Leya/core/interp <<< $line;echo; done
     fi
   done
 done
