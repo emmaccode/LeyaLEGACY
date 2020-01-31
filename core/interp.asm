@@ -6,6 +6,10 @@
 
 
 SECTION .data
+
+
+    ; Special forms:
+
     ifSymbol: db "if",0
     quoteSymbol: db "quote",0
     lambdaSymbol: db "lambda",0
@@ -13,7 +17,7 @@ SECTION .data
     beginSymbol: db "begin",0
     defineSymbol: db "define",0
     letSymbol: db "let",0
-    setSymbol: db "set",0
+    setSymbol: db "set!",0
 
 
 
@@ -34,25 +38,34 @@ _start:
 
 
 
-; Allocate memory;
-        mov rax, 12
-        mov rdi, 0
+; Allocate memory for the heap:
+
+        ; Get the current brk address
+        mov rax, 12 ; brk
+        mov rdi, 0 
         syscall
-        ; Save the information
+
+        ; Save the info
         mov [alloc_ptr], rax
         mov [heap_start], rax
+
+        ; Allocate some arbitrary number of bytes
         mov rdi, rax
         add rdi, 1000000
 
         ; Syscall
         mov rax, 12
         syscall
-; Reader loop reads the code
+
+
+
+; Read the source code into the heap
+
     reading_loop:
 
-        ; Read from input
+        ; Read from stdin
         mov rax, 0
-        mov rdi, 0 ; < ------- stdin
+        mov rdi, 0 ; stdin
         mov rsi, [alloc_ptr]
         mov rdx, 100000
         syscall
@@ -61,6 +74,9 @@ _start:
 
         cmp rax, 0
         jne reading_loop
+
+    ; After the loop:
+
         ; Save the end of the program
         mov rax, [alloc_ptr]
         mov [program_end], rax
@@ -78,7 +94,7 @@ _start:
 
         inc rax
         jmp align_loop
-
+        
     align_loop_break:
         mov [alloc_ptr], rax
 
@@ -183,11 +199,18 @@ addDefineNodeToEnvironment:
     add qword [alloc_ptr], 32
 
     ret
-
+    
 
 
 
 addToEnvironmentWithDefine:
+    ; When defining things with "define", to make sure that the definitions are mutually recursive,
+    ; we pass an environment containing an indirection. 
+    ; 
+    ; For now, that indirection is a pair whose car is a null.
+    ; addDefineNodeToEnvironment is used to get the redirection.
+    ;
+    ; The pointer to the environment list (a cons cell) is in rdi:rsi
     ; The symbol we insert with is in rdx:rcx
     ; The value we insert is in r8:r9
     ;
@@ -279,8 +302,11 @@ addToEnvironment:
 
 
 addListToEnv:
-
-
+    ; The pointer to the environment list (a cons cell) is in rdi:rsi
+    ; The symbols we insert with are in rdx:rcx (should be a list)
+    ; The values we insert are in r8:r9 (should be a list)
+    ;
+        
 
         push r12
         push r13
@@ -293,7 +319,7 @@ addListToEnv:
         mov r15, r9
 
     .loop:
-
+        
         cmp r12d, pair_t
         jne .notCons
 
@@ -310,14 +336,15 @@ addListToEnv:
         mov r14, [r15+16] ; cdr of values
         mov r15, [r15+24]
 
-
+        ; At this point, rdx:rcx contains a symbol and r8:r9 contains a value
+        ; rdi:rsi contains previous environment
 
         call addToEnvironment
 
         ; At this point, rdi:rsi contains new environment
 
         jmp .loop
-
+        
 
     .notCons:
         cmp r12, null_t
@@ -343,6 +370,11 @@ addListToEnv:
 
 
 findInEnvironment:
+    ; An environment is a list of pairs
+    ; Bindings closer to the beginning shadow those closer to the end
+
+    ; The pointer to the environment list (a cons cell) is in rdi:rsi
+    ; A pointer to the string we are searching for comes into rdx
 
     ; Value comes out of rdi:rsi
         call findInEnvironmentPointer
@@ -351,16 +383,20 @@ findInEnvironment:
         mov rsi, [rax + 8]
 
         ret
-
-
+    
+    
 replaceInEnvironment:
     ; Environment comes into rdi:rsi
     ; Key comes into rdx:rcx
     ; Value comes into r8:r9
+    ;
+    ; Nothing is returned
+
+
         push r9
         push r8
 
-        mov rdx, rcx ; rdx:rcx
+        mov rdx, rcx ; Assuming for now rdx:rcx is a symbol
 
         call findInEnvironmentPointer
 
@@ -375,7 +411,13 @@ replaceInEnvironment:
 
 
 
+; Todo: the key should be in the form rdx:rcx
 findInEnvironmentPointer:
+    ; An environment is a list of pairs
+    ; Bindings closer to the beginning shadow those closer to the end
+
+    ; The pointer to the environment list (a cons cell) is in rdi:rsi
+    ; A pointer to the string we are searching for comes into rdx
 
     ; A pointer to the returned value comes out of rax
     ;
@@ -385,7 +427,7 @@ findInEnvironmentPointer:
         push r13
         push r12
 
-
+        
         ; Check if the input is a cons.
         ; It might be a null if the variable isn't in the environment
         ; TODO make a clearer error message about this
@@ -430,8 +472,8 @@ findInEnvironmentPointer:
         pop r11
 
         cmp rax, 0
-        je .success
-
+        je .success 
+        
     .tryNext:
         mov rdi, r10
         mov rsi, r11
@@ -456,8 +498,20 @@ findInEnvironmentPointer:
 
         ret
 
+
+
+
+
+
+;TODO: a lot of the branches have the same structure. It would be nice to refactor it
+; Perhaps get the symbols interned?
+
 eval:
-    ; The expression goes into rdi:rsi
+    ; The expression to be evaled goes into rdi:rsi
+    ; The environment (pointer to a cons or null) goes into rdx:rcx
+    ;
+    ; The evaluated result comes out of rdi:rsi
+    ; The modified environment comes out of rdx:rcx
 
         cmp rdi, null_t
         je exitError
@@ -473,7 +527,9 @@ eval:
         je .pair
         cmp rdi, symbol_t
         je .symbol
-        errorMsg "You seem to have tried to evaluate non-AST."
+
+        ; We shouldn't find anything else in the AST
+        errorMsg "Trying to evaluate something that isn't valid AST"
 
     .selfQuoting:
         ret ;
@@ -550,7 +606,7 @@ eval:
         mov [rsi+8], rcx
         mov [rsi+16], r10
         mov [rsi+24], r11
-
+        
         add qword [alloc_ptr], 32
 
         mov rdi, sc_fun_t_full
@@ -596,7 +652,7 @@ eval:
 
         jmp  handleSet; tail call
 
-    .notSpecialForm:
+    .notSpecialForm: 
         mov rdi, [r10] ; Get the car
         mov rsi, [r10 + 8]
 
@@ -609,7 +665,7 @@ eval:
         pop r10
         pop rcx
         pop rdx
-
+        
         cmp rdi, bi_fun_t ; built-in function
         jne .maybeSchemeFunction
 
@@ -620,8 +676,8 @@ eval:
 
         jmp .endPair
 
-    .maybeSchemeFunction: ; edi[r10]
-        cmp edi, sc_fun_t
+    .maybeSchemeFunction: ; Maybe a lambda?
+        cmp edi, sc_fun_t 
         jne exitError
 
         mov r8, [r10 + 16] ; get the cdr
@@ -630,13 +686,13 @@ eval:
         call handleSchemeApplication
 
         jmp .endPair
-
-
+        
+        
     .endPair:
-
+        
         jmp .return
 
-        jmp exitError ; <----- Work on this TODO TODO stupid idiot
+        jmp exitError ; NOT IMPLEMENTED
 
     .symbol:
         push rdx
@@ -655,7 +711,7 @@ eval:
         jmp .return
 
 
-    .return:
+    .return: 
 
         ret
 
@@ -672,11 +728,12 @@ handleIf:
         push r14
         push r15
 
+        ; If cdr isn't a list, it's worthless
         cmp edi, pair_t
         jne exitError
 
         mov r12, [rsi] ; (car (cdr exp)) type (the condition)
-        mov r13, [rsi+8] ; (car (cdr exp))
+        mov r13, [rsi+8] ; (car (cdr exp)) 
         mov r14, [rsi+16] ; (cdr (cdr exp)) type
         mov r15, [rsi+24] ; (cdr (cdr exp))
 
@@ -798,11 +855,11 @@ handleBuiltInApplication:
     push r15
 
     mov rax, 0
-
+    
     .argEvalLoop:
         cmp r8, null_t
         je .break
-
+        
         cmp r8d, pair_t
         jne exitError
 
@@ -847,16 +904,16 @@ handleBuiltInApplication:
         mov rdi, rax
 
         call rsi
-
+        
         ; Now the answer should be in rdi:rsi
         ; Time to clean the stack
 
         lea r12, [r12*2]
         lea rsp, [rsp + r12*8] ; subtract rsi*16 from the stack
         ; This is equivalent to popping r12*2 times
-
+        
     .return:
-
+    
         pop r15
         pop r14
         pop r13
@@ -867,6 +924,15 @@ handleBuiltInApplication:
 
 
 handleSchemeApplication:
+    ; rdi:rsi is the function. we know it's a sc_fun_t
+    ; rdx:rcx is the environment of course
+    ; r8:r9 is the argument list
+    ; 
+    ; rdi:rsi value out
+    ; Let's assume that there is no environment out
+    ;
+    ; What I'm going to do is that I'm going to evaluate builtInList on the
+    ; argument list and then put it into the environment and eval the AST
 
     push rsi
 
@@ -884,7 +950,7 @@ handleSchemeApplication:
     ; Now rdi:rsi contains the list we want to insert into env
     mov r8, rdi
     mov r9, rsi
-
+    
     pop rsi
 
     mov rax, rsi
@@ -912,7 +978,7 @@ handleSchemeApplication:
     call addDefineNodeToEnvironment
 
     pop r11
-
+    
 
     ; Now the new environment is in rdi:rsi. Move it to rdx:rcx
     mov rdx, rdi
@@ -931,24 +997,24 @@ handleSchemeApplication:
     jmp evalSequence; tail-call
 
 
-handleDefine:
+handleDefine: 
     ;
     ; rdi:rsi
     ; rdx:rcx is the environment
 
     cmp edi, pair_t
-    errorNe "You can't just use var and not do anything with it."
+    errorNe "'define' must be followed by two data."
 
     mov r8, [rsi]
     mov r9, [rsi+8]
     mov r10, [rsi+16]
     mov r11, [rsi+24]
-
+    
     push r9
     push r8
 
     cmp r10d, pair_t
-    errorNe "You can't just use var and not do anything with it."
+    errorNe "'define' must be followed by two data."
 
     mov r8, [r11]
     mov r9, [r11+8]
@@ -956,7 +1022,7 @@ handleDefine:
     mov r11, [r11+24]
 
     cmp r10d, null_t
-    errorNe "You can't just use var and not do anything with it."
+    errorNe "'define' must be followed by two data."
 
     mov rdi, r8
     mov rsi, r9
@@ -994,7 +1060,7 @@ handleSet:
     mov r9, [rsi+8]
     mov r10, [rsi+16]
     mov r11, [rsi+24]
-
+    
     push r9
     push r8
 
@@ -1053,7 +1119,7 @@ evalSequence:
 
 
         cmp edi, pair_t
-    ;    errorNe "FATAL!: That's not a list!"
+        errorNe "What was passed to evalSequence isn't a list"
 
         mov r8, [rsi]
         mov r9, [rsi+8]
@@ -1077,7 +1143,7 @@ evalSequence:
         pop rdx
         pop rcx
         pop rdi
-        pop rsi
+        pop rsi 
 
 
         jmp .loop
@@ -1089,3 +1155,5 @@ evalSequence:
         mov rsi, r9
 
         jmp eval
+
+        
