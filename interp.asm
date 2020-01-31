@@ -11,7 +11,7 @@ SECTION .data
     lambdaSymbol: db "lambda",0
 
     beginSymbol: db "begin",0
-    defineSymbol: db "var",0
+    defineSymbol: db "define",0
     letSymbol: db "let",0
     setSymbol: db "set",0
 
@@ -1053,7 +1053,7 @@ evalSequence:
 
 
         cmp edi, pair_t
-        errorNe "FATAL!: That's not a list!"
+    ;    errorNe "FATAL!: That's not a list!"
 
         mov r8, [rsi]
         mov r9, [rsi+8]
