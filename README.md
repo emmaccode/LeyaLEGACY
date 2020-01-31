@@ -3,7 +3,7 @@
 
 
 ### Installation
-**This package depends heavily on nasm, which is not compatible with kernels that aren't Linux-based.**
+**I'm still working on the language, the features are minimal at this point in time, but will definitely be iterated upon in the future!**
 ```bash
 [emmett@emmett-kabylake Downloads] git clone https://github.com/emmettgb/Leya
 [emmett@emmett-kabylake Downloads] cd Leya
