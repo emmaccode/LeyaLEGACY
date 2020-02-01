@@ -38,22 +38,21 @@
 %include "utilities.asm"
 %include "type.asm"
 %include "codeparser.asm"
-%include "print.asm"
-%include "prefabs.asm"
 ; <------ [deps] ------>
 ;          DON'T HARDCODE THESE SYMBOLS
 SECTION .data
+    nullSymbol: db "null",0
     ifSymbol: db "if",0
     quoteSymbol: db "quote",0
     lambdaSymbol: db "lambda",0
     beginSymbol: db "begin",0
     ; memory tag define JUMP > Add to environment Define.
-    defineSymbol: db "function",0
+    defineSymbol: db "var",0
     letSymbol: db "let",0
-    setSymbol: db "var",0
-    ; LEMMA
-    macroSymbol: db "lemma",0
-
+    setSymbol: db "set",0
+    numPrintBuffLen equ 80
+	numPrintBuff: resb (numPrintBuffLen +1)
+    charPrintBuff: resb 1
 
 SECTION .bss
     heap_start: resq 1
@@ -1194,3 +1193,880 @@ evalSequence:
         mov rsi, r9
 
         jmp eval
+        builtInAdd:
+
+                mov rax, 0
+
+                lea rdi, [rdi*2]
+                lea rdi, [rdi*8]
+
+            .loop:
+                cmp rdi, 0
+                je .return
+
+                mov rsi, [rsp + rdi - 8]
+
+                cmp rsi, int_t
+                errorNe "Argument to '+' isn't an integer"
+
+                add rax, [rsp + rdi]
+
+                sub rdi, 8
+                sub rdi, 8
+
+                jmp .loop
+
+            .return:
+
+                mov rdi, int_t
+                mov rsi, rax
+
+                ret
+
+
+        builtInSub:
+
+                cmp rdi, 0
+                errorE "'-' must be called with at least one argument"
+
+                cmp rdi, 1
+                jne .actuallySub
+
+
+            .negate:
+
+                mov rdi, [rsp + 8]
+                mov rsi, [rsp + 16]
+
+                cmp rdi, int_t
+                jne .typeError
+
+                neg rsi
+
+                ret
+
+
+            .actuallySub:
+
+                lea rdi, [rdi*2]
+                lea rdi, [rdi*8]
+
+                mov rdx, [rsp + rdi - 8]
+                mov rcx, [rsp + rdi]
+
+                sub rdi, 8
+                sub rdi, 8
+
+                cmp rdx, int_t
+                jne .typeError
+
+                mov rax, rcx
+
+            .loop:
+                cmp rdi, 0
+                je .return
+
+                mov rsi, [rsp + rdi - 8]
+
+                cmp rsi, int_t
+                jne .typeError
+
+                sub rax, [rsp + rdi]
+
+                sub rdi, 8
+                sub rdi, 8
+
+                jmp .loop
+
+            .typeError:
+                errorMsg "Argument to '-' isn't an integer"
+
+            .return:
+
+                mov rdi, int_t
+                mov rsi, rax
+
+                ret
+	;		builtinDiv:
+
+
+        builtInMul:
+
+                mov rax, 1
+
+                lea rdi, [rdi*2]
+                lea rdi, [rdi*8]
+
+            .loop:
+                cmp rdi, 0
+                je .return
+
+                mov rsi, [rsp + rdi - 8]
+
+                cmp rsi, int_t
+                jne exitError
+
+                mov rcx, [rsp + rdi]
+                imul rcx
+
+                sub rdi, 8
+                sub rdi, 8
+
+                jmp .loop
+
+            .return:
+
+                mov rdi, int_t
+                mov rsi, rax
+
+                ret
+
+        builtInIntEq:
+
+                cmp rdi, 0
+                je .argumentNumberError
+                cmp rdi, 1
+                je .argumentNumberError
+
+
+            .takeFirst:
+
+                lea rdi, [rdi*2]
+                lea rdi, [rdi*8]
+
+                mov rdx, [rsp + rdi - 8]
+                mov rcx, [rsp + rdi]
+
+                sub rdi, 8
+                sub rdi, 8
+
+                cmp rdx, int_t
+                jne .typeError
+
+                mov rax, rcx
+
+            .loop:
+                cmp rdi, 0
+                je .returnEqual
+
+                mov rsi, [rsp + rdi - 8]
+
+                cmp rsi, int_t
+                jne .typeError
+
+                cmp rax, [rsp + rdi]
+                jne .returnNotEqual
+
+                sub rdi, 8
+                sub rdi, 8
+
+                jmp .loop
+
+            .typeError:
+                errorMsg "Argument to '=' isn't an integer"
+
+            .argumentNumberError:
+                errorMsg "'=' must be called with at least two argument"
+
+            .returnEqual:
+
+                mov rdi, bool_t
+                mov rsi, 1
+
+                ret
+
+            .returnNotEqual:
+
+                mov rdi, bool_t
+                mov rsi, 0
+
+                ret
+
+
+        %macro comparisonFunction 3
+
+        %1:
+
+                cmp rdi, 0
+                je .argumentNumberError
+                cmp rdi, 1
+                je .argumentNumberError
+
+
+            .takeFirst:
+
+                lea rdi, [rdi*2]
+                lea rdi, [rdi*8]
+
+                mov rdx, [rsp + rdi - 8]
+                mov rcx, [rsp + rdi]
+
+                sub rdi, 8
+                sub rdi, 8
+
+                cmp rdx, int_t
+                jne .typeError
+
+                mov rax, rcx
+
+            .loop:
+                cmp rdi, 0
+                je .returnEqual
+
+                mov rsi, [rsp + rdi - 8]
+
+                cmp rsi, int_t
+                jne .typeError
+
+                cmp rax, [rsp + rdi]
+                %3 .returnNotEqual
+                mov rax, [rsp + rdi]
+
+                sub rdi, 8
+                sub rdi, 8
+
+                jmp .loop
+
+            .typeError:
+                errorMsg "Argument to comparison function isn't an integer"
+
+            .argumentNumberError:
+                errorMsg "Comparison functions must be called with at least two argument"
+
+            .returnEqual:
+
+                mov rdi, bool_t
+                mov rsi, 1
+
+                ret
+
+            .returnNotEqual:
+
+                mov rdi, bool_t
+                mov rsi, 0
+
+                ret
+
+        %endmacro
+
+
+        ; Bloating the binary, generate a bunch of comparison functions
+        comparisonFunction builtInIntLt, "<", jge
+        comparisonFunction builtInIntGt, ">", jle
+        comparisonFunction builtInIntLeq, "<=", jg
+        comparisonFunction builtInIntGeq, ">=", jl
+
+
+
+        ; This sub-procedure is to get 2 arguments passed to a built-in proc
+        ; The zf will be preserved so a jne or je could be used after
+        get2Arguments:
+                cmp rdi, 2
+                je .correct
+                ret
+
+            .correct:
+                ; Note that we need to jump over the return address
+                mov rdi, [rsp + 32]
+                mov rsi, [rsp + 40]
+                mov rdx, [rsp + 16]
+                mov rcx, [rsp + 24]
+
+                ret
+
+
+
+
+
+        builtInCons:
+
+                cmp rdi, 2
+                errorNe "'cons' requires two arguments"
+
+                mov r8, [rsp + 24]
+                mov r9, [rsp + 32]
+                mov r10, [rsp + 8]
+                mov r11, [rsp + 16]
+
+                mov rdi, [alloc_ptr]
+
+                ; TODO: use vectorization
+
+                mov [rdi], r8
+                mov [rdi+8], r9
+                mov [rdi+16], r10
+                mov [rdi+24], r11
+
+                add qword [alloc_ptr], 32
+
+                mov rsi, rdi
+                mov rdi, pair_t_full
+
+
+                ret
+
+
+        builtInNot:
+
+                cmp rdi, 1
+                errorNe "'not' must have exactly one argument"
+
+                mov rdi, [rsp + 8]
+                mov rsi, [rsp + 16]
+
+                cmp rdi, bool_t
+                jne .returnFalse
+                cmp rsi, 0
+                jne .returnFalse
+
+            .returnTrue:
+                mov rdi, bool_t
+                mov rsi, 1
+
+                ret
+
+            .returnFalse:
+
+                mov rdi, bool_t
+                mov rsi, 0
+
+                ret
+
+
+        builtInList:
+
+
+                mov r10, rdi
+
+                mov rdi, null_t
+                mov rsi, 0
+
+                lea r10, [r10*2]
+                lea r10, [r10*8]
+                mov r11, 0
+
+            .loop:
+
+
+                cmp r10, r11
+                je .return
+
+
+                add r11, 8
+                mov r8, [rsp + r11]
+                add r11, 8
+                mov r9, [rsp + r11]
+
+                mov rax, [alloc_ptr]
+
+                mov [rax], r8
+                mov [rax + 8], r9
+                mov [rax + 16], rdi
+                mov [rax + 24], rsi
+
+                mov rdi, pair_t_full
+                mov rsi, [alloc_ptr]
+
+                add qword [alloc_ptr], 32
+
+                jmp .loop
+
+            .return:
+
+                ; At this point, rdi:rsi contains the answer
+
+                ret
+
+        builtInGetType:
+
+
+        builtInVectorRef:
+
+                call get2Arguments
+                errorNe "'vector-ref' requires 2 arguments"
+
+                ;call printWrapper
+
+                mov r8, vector_mask
+                and r8, rdi
+
+                mov r9, vector_mask
+                cmp qword r8, r9
+                errorNe "Something that isn't essentially a vector was passed to 'vector-ref'"
+
+                cmp rdx, int_t
+                errorNe "Second argument of 'vector-ref' isn't an integer"
+
+                mov r8, rdi
+                shr r8, 32
+                and r8, size_mask
+
+                cmp rcx, 0
+                jl .notInRange
+
+                cmp r8, rcx
+                jle .notInRange
+
+                lea rcx, [rcx*2]
+
+                mov rdi, [rsi + rcx*8]
+                mov rsi, [rsi + rcx*8 + 8]
+
+
+                ret
+
+            .notInRange:
+                errorMsg "Integer passed to vector-ref is not in range"
+
+
+
+
+
+
+        %macro insertFunctionIntoEnvironment 2
+            ; embed the string in the source... what???
+            jmp %%after
+            %%string: db %2, 0
+            %%after:
+
+            mov rdx, symbol_t
+            mov rcx, %%string
+            mov r8, bi_fun_t
+            mov r9, %1
+
+            call addToEnvironment
+
+        %endmacro
+
+
+
+        createInitialEnvironment:
+
+            ; Places all the built-in functions into the environment
+
+            mov rdi, null_t
+            mov rsi, 0
+
+            mov rdx, symbol_t
+            mov rcx, nullSymbol
+            mov r8, null_t
+            mov r9, 0
+
+            call addToEnvironment
+
+            insertFunctionIntoEnvironment builtInAdd, "+"
+            insertFunctionIntoEnvironment builtInSub, "-"
+            insertFunctionIntoEnvironment builtInMul, "*"
+            insertFunctionIntoEnvironment builtInIntEq, "="
+            insertFunctionIntoEnvironment builtInIntLt, "<"
+            insertFunctionIntoEnvironment builtInIntGt, ">"
+            insertFunctionIntoEnvironment builtInIntLeq, "<="
+            insertFunctionIntoEnvironment builtInIntGeq, ">="
+            insertFunctionIntoEnvironment builtInNot, "not"
+            insertFunctionIntoEnvironment builtInVectorRef, "vecrf"
+            insertFunctionIntoEnvironment builtInCons, "cons"
+		;	insertFunctionIntoEnvironment builtInLen, "len"
+            insertFunctionIntoEnvironment builtInList, "'"
+		;	insertFunctionIntoEnvironment builtinDiv
+
+
+            call addDefineNodeToEnvironment
+
+            ret
+			print:
+			    ; type of input comes into rax
+			    ; input comes into rbx
+
+			        push rdi
+
+
+			    .maybeList:
+			        cmp rax, null_t
+			        je .isList
+
+			        cmp eax, pair_t
+			        je .isList
+
+			        jmp .maybeNumber
+
+			    .isList:
+			        push rax
+
+			        mov rdi, 1 ; print to stdout
+
+			        mov sil, '('
+			        call printChar
+
+
+
+
+			        mov sil, ' '
+			        call printChar
+
+			        pop rax
+
+			        call printRestOfList
+			        jmp .return
+
+
+			    .maybeNumber:
+			        cmp rax, int_t
+			        jne .maybeBool
+
+			        mov rax, rbx
+
+			        call printNumber
+
+			        jmp .return
+
+			    .maybeBool:
+			        cmp rax, bool_t
+			        jne .maybeSymbol
+
+			        mov rdi, 1
+			        mov sil, "#"
+
+			        call printChar
+
+			        cmp rbx, 0
+			        jne .true
+
+
+			        mov rdi, 1
+			        mov sil, "f"
+
+			        call printChar
+
+			        jmp .return
+
+
+			    .true:
+			        mov rdi, 1
+			        mov sil, "t"
+
+			        call printChar
+
+			        jmp .return
+
+
+			    .maybeSymbol:
+			        cmp rax, symbol_t
+			        jne .error
+
+			        push rsi
+
+			        mov rsi, rbx
+			        call printNullTerminatedString
+
+			        pop rsi
+
+			        jmp .return
+
+			    .error:
+			        errorMsg "The object cannot be printed"
+
+
+			    .return:
+			        pop rdi
+			        ret
+
+
+
+			printNullTerminatedString:
+			    ; string comes into rsi
+
+					push rax
+					push rbx
+					push rcx
+					push rdx
+			        push rdi
+			        push rsi
+
+			        push r8
+			        push r9
+			        push r10
+			        push r11
+
+
+
+			        push rsi
+
+			        mov rdx, 0
+
+			    .findLength:
+			        mov r9b, [rsi]
+			        cmp r9b, 0
+			        je .print
+
+			        inc rsi
+			        inc rdx
+			        jmp .findLength
+
+			    .print:
+
+			        mov rax, 1 ; write
+			        mov rdi, 1 ; stdout
+			        pop rsi ; get beginning of string
+			        ; rdx is the size of the string
+			        syscall
+
+			        pop r11
+			        pop r10
+			        pop r9
+			        pop r8
+
+			        pop rsi
+			        pop rdi
+					pop rdx
+					pop rcx
+					pop rbx
+					pop rax
+			        ret
+
+
+
+
+			printRestOfList:
+			    ; type (null or cons) comes into rax
+			    ; value comes into rax
+
+			    push rdi
+
+
+			    .start:
+
+			    .maybeNull:
+			        cmp rax, null_t
+			        jne .notNull
+
+			        mov rdi, 1 ; print to stdout
+			        mov rsi, ')'
+			        call printChar
+
+			        jmp .return
+
+			    .notNull:
+			        cmp eax, pair_t
+			        jne .somethingElse
+
+			        push rax
+			        push rbx
+
+			        ; Get the car of the cons
+			        mov rax, [rbx]
+			        mov rbx, [rbx + 8]
+
+			        ; Print it
+			        call print
+
+			        mov rdi, 1 ; print char to stdout
+			        mov rsi, ' '
+			        call printChar
+
+			        pop rbx
+			        pop rax
+
+			        ; Get the cdr of the cons
+			        mov rax, [rbx + 16]
+			        mov rbx, [rbx + 24]
+
+			        ; recursive tail-call
+			        jmp .start
+
+
+
+			    .somethingElse: ; to consider the weird case of pairs whose cdr isn't a list (cons 1 1) = '(1 . 1)
+
+			        push rax
+
+
+			        mov rdi, 1
+			        mov rsi, '.'
+			        call printChar
+			        mov rdi, 1
+			        mov rsi, ' '
+			        call printChar
+
+
+			        pop rax
+
+			        call print
+
+			        mov rdi, 1
+			        mov rsi, ' '
+			        call printChar
+			        mov rdi, 1
+			        mov rsi, ')'
+			        call printChar
+
+			        jmp .return
+
+			    .return:
+			        pop rdi
+
+			        ret
+
+
+
+			printChar:
+			    ; file to print to comes into rdi
+			    ; character to print comes into lower byte of rsi
+
+			    push rax
+			    push rbx
+			    push rcx
+			    push rdx
+			    push rdi
+			    push rsi
+
+			    push r8
+			    push r9
+			    push r10
+			    push r11
+
+
+			    mov byte [charPrintBuff], sil
+
+			    mov rax, 1
+			    ; rdi is already right
+			    mov rsi, charPrintBuff
+			    mov rdx, 1
+			    syscall
+
+			    pop r11
+			    pop r10
+			    pop r9
+			    pop r8
+
+			    pop rsi
+			    pop rdi
+			    pop rdx
+			    pop rcx
+			    pop rbx
+			    pop rax
+
+
+			    ret
+
+
+			printNumber:
+				; number comes in rax
+
+					push rax
+					push rbx
+					push rcx
+					push rdx
+			        push rdi
+			        push rsi
+
+			        push r8
+			        push r9
+			        push r10
+			        push r11
+
+
+			        push rax
+
+			        mov rdi, numPrintBuff
+			        mov rcx, numPrintBuffLen
+			        mov rax, 0
+			        rep stosb
+
+			        pop rax
+
+			        mov rdi, numPrintBuff
+
+				.checkIfSigned:
+					cmp rax, 0
+					jge .startBreakingUp
+					mov byte [rdi], '-'
+					inc rdi
+					neg rax
+
+
+				.startBreakingUp:
+
+
+					mov rcx, 0 ;counter
+					mov rbx, 10 ;variable to divide by 10
+
+				.breakUpNumber:
+					mov rdx, 0
+					div rbx  ;divide by 10
+					push rdx
+					inc rcx
+					cmp rax, 0
+					jne .breakUpNumber
+
+				.writeNumber:
+
+					cmp rcx, 0
+					je .end
+
+					pop rax
+					add al, '0'
+					stosb
+
+					dec rcx
+					jmp .writeNumber
+
+
+				.end:
+			        ;mov al, `\n`
+			        ;stosb
+
+			        mov rdx, rdi
+			        sub rdx, numPrintBuff
+
+			        mov rax, 1
+			        mov rdi, 1 ; stdout
+			        mov rsi, numPrintBuff
+			        syscall
+
+
+			        pop r11
+			        pop r10
+			        pop r9
+			        pop r8
+
+			        pop rsi
+			        pop rdi
+					pop rdx
+					pop rcx
+					pop rbx
+					pop rax
+
+			ret
+
+
+			printNewline:
+					push rax
+					push rbx
+					push rcx
+					push rdx
+			        push rdi
+			        push rsi
+
+			        push r8
+			        push r9
+			        push r10
+			        push r11
+
+			    mov rdi, 1 ; print char to stdout
+			    mov rsi, 0
+			    mov sil, `\n`
+			    call printChar
+
+			        pop r11
+			        pop r10
+			        pop r9
+			        pop r8
+
+			        pop rsi
+			        pop rdi
+					pop rdx
+					pop rcx
+					pop rbx
+					pop rax
+
+			    ret
