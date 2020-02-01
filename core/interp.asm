@@ -51,13 +51,12 @@ SECTION .data
     letSymbol: db "let",0
     setSymbol: db "set",0
     numPrintBuffLen equ 80
-	numPrintBuff: resb (numPrintBuffLen +1)
-    charPrintBuff: resb 1
 
 SECTION .bss
     heap_start: resq 1
     program_end: resq 1
-
+    numPrintBuff: resb (numPrintBuffLen +1)
+    charPrintBuff: resb 1
     alloc_ptr: resq 1
 
 
