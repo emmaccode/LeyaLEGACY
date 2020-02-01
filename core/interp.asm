@@ -1,24 +1,58 @@
+;                              .....
+;                            .e$$$$$$$$$$$$$$e.
+;                          z$$ ^$$$$$$$$$$$$$$$$$.
+;                        .$$$* J$$$$$$$$$$$$$$$$$$$e
+;                       .$"  .$$$$$$$$$$$$$$$$$$$$$$*-
+;                      .$  $$$$$$$$$$$$$$$$***$$  .ee"
+;         z**$$        $$r ^**$$$$$$$$$*" .e$$$$$$*"
+;        " -\e$$      4$$$$.         .ze$$$""""
+;       4 z$$$$$      $$$$$$$$$$$$$$$$$$$$"
+;       $$$$$$$$     .$$$$$$$$$$$**$$$$*"
+;     z$$"    $$     $$$$P*""     J$*$$c
+;    $$"      $$F   .$$$          $$ ^$$
+;   $$        *$$c.z$$$          $$   $$
+;  $P          $$$$$$$          4$F   4$
+; dP            *$$$"           $$    '$r
+;.$                            J$"     $"
+;$                             $P     4$
+;                            $$      4$
+;                            4$%      4$
+;                            $$       4$
+;                           d$"       $$
+;                           $P        $$
+;                          $$         $$
+;                         4$%         $$
+;                         $$          $$
+;                        d$           $$
+;                        $F           "3
+;                 r=4e="  ...  ..rf   .  ""%
+;		 __    ____
+;		(  )  ( ___)=========================|
+;		 )(__  )__)      Version 0.0.3       |
+;		(____)(____)  Copyright (C) 2020     |
+;		 _  _   __|==========================|
+;		( \/ ) /__\  Leya Compiler Version   |
+;		 \  / /(__)\        0.0.5            |
+;		 (__)(__)(__)========================|
+; <------ [deps] ------>
 %include "utilities.asm"
 %include "type.asm"
 %include "codeparser.asm"
 %include "print.asm"
 %include "prefabs.asm"
-
-
+; <------ [deps] ------>
+;          DON'T HARDCODE THESE SYMBOLS
 SECTION .data
-
-
-    ; Special forms:
-
     ifSymbol: db "if",0
     quoteSymbol: db "quote",0
     lambdaSymbol: db "lambda",0
-
     beginSymbol: db "begin",0
-    defineSymbol: db "define",0
+    ; memory tag define JUMP > Add to environment Define.
+    defineSymbol: db "function",0
     letSymbol: db "let",0
-    setSymbol: db "set!",0
-
+    setSymbol: db "var",0
+    ; LEMMA
+    macroSymbol: db "lemma",0
 
 
 SECTION .bss
@@ -29,7 +63,7 @@ SECTION .bss
 
 
 SECTION .text
-
+    ; Starts main:
     global _start
 
 
@@ -38,19 +72,20 @@ _start:
 
 
 
-; Allocate memory for the heap:
+; Allocate our memory
 
         ; Get the current brk address
         mov rax, 12 ; brk
-        mov rdi, 0 
+        mov rdi, 0
         syscall
 
-        ; Save the info
+        ; rax => alloc_ptr && heap_start
         mov [alloc_ptr], rax
         mov [heap_start], rax
 
-        ; Allocate some arbitrary number of bytes
+        ; (Allocate memory)
         mov rdi, rax
+        ; 64 == 9 million;
         add rdi, 1000000
 
         ; Syscall
@@ -59,8 +94,9 @@ _start:
 
 
 
-; Read the source code into the heap
-
+; Read the source code into memory
+;   VVVVVVVVVVVV Recreate this with call reading_loop attached
+;            for read evaluate print
     reading_loop:
 
         ; Read from stdin
@@ -74,7 +110,7 @@ _start:
 
         cmp rax, 0
         jne reading_loop
-
+    ;   call reading_loop
     ; After the loop:
 
         ; Save the end of the program
@@ -85,7 +121,7 @@ _start:
         mov byte [rax], 0
         inc rax
 
-    ; Align the pointer to 32 bytes (size of a pair)
+    ; Align pointer
     align_loop:
         mov rdi, rax
         and rdi, 0x1f
@@ -94,28 +130,30 @@ _start:
 
         inc rax
         jmp align_loop
-        
+
     align_loop_break:
         mov [alloc_ptr], rax
 
 
 
 
-; parse the code
+; (Global)
+    ; Move heap_start value into rsi
     mov rsi, [heap_start]
+    ; Parse duh rest of the list
     call parseRestOfList
     push rax
     mov al, [rsi]
     cmp al, ')'
-    errorE "unopened ')' at the end"
+    errorE "Syntax Error: Incomplete Parenthesis in expression."
 
-    mov byte [rsi], 0 ; A hack so that a single symbol can correctly be read
+    mov byte [rsi], 0 ; Allows our symbol to be read.
     pop rax
 
 
-; play around with environment
 
-    push rax ; PARSING ISN'T CLOSE TO SYSTEM-V AT ALL
+
+    push rax
     push rbx
 
 
@@ -138,7 +176,8 @@ _start:
     mov rax, rdi
     mov rbx, rsi
 
-    call print ; PRINTING ISN'T SYSTEM-V BUT SHOULD BE SINCE IT WORKS WITH SYSCALLS
+    call print ; PRINTING ISN'T SYSTEM-V BUT SHOULD
+    ;BE SINCE IT WORKS WITH SYSCALLS
 
 
 ; Exit
@@ -147,12 +186,14 @@ _start:
         mov rdi, 0
         syscall
 
+import:
 
-
+        ; CONTROL VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
 cmpNullTerminatedStrings:
     ; String pointers come into rdi and rsi
-    ; returns 0 in rax if strings are equal, something else if they are not
-    ; (idea is that eventually we might also say whether one of them is bigger than the other)
+    ; returns 0 in rax if strings are equal, 1 if they are not:
+    ; (idea is that eventually we might also say whether one of them is bigger
+    ; than the other)
 
 
     .loop:
@@ -183,9 +224,7 @@ cmpNullTerminatedStrings:
 
 
 addDefineNodeToEnvironment:
-    ; Basically this creates a new environment "frame" or something like that
-    ; eh, maybe make this better defined and actually take the time to do this while I'm not tired, eh? Why don't you go to sleep, it's almost midnightttttttttt
-    ; environment comes in to and out of rdi:rsi
+
 
     mov rax, [alloc_ptr]
 
@@ -199,14 +238,15 @@ addDefineNodeToEnvironment:
     add qword [alloc_ptr], 32
 
     ret
-    
+    ; (Return from call)
 
 
 
 addToEnvironmentWithDefine:
-    ; When defining things with "define", to make sure that the definitions are mutually recursive,
-    ; we pass an environment containing an indirection. 
-    ; 
+    ; When defining things with "define", to make sure that the definitions
+    ; are mutually recursive,
+    ; we pass an environment containing an indirection.
+    ;
     ; For now, that indirection is a pair whose car is a null.
     ; addDefineNodeToEnvironment is used to get the redirection.
     ;
@@ -306,7 +346,7 @@ addListToEnv:
     ; The symbols we insert with are in rdx:rcx (should be a list)
     ; The values we insert are in r8:r9 (should be a list)
     ;
-        
+
 
         push r12
         push r13
@@ -319,7 +359,7 @@ addListToEnv:
         mov r15, r9
 
     .loop:
-        
+
         cmp r12d, pair_t
         jne .notCons
 
@@ -344,7 +384,7 @@ addListToEnv:
         ; At this point, rdi:rsi contains new environment
 
         jmp .loop
-        
+
 
     .notCons:
         cmp r12, null_t
@@ -383,8 +423,8 @@ findInEnvironment:
         mov rsi, [rax + 8]
 
         ret
-    
-    
+
+
 replaceInEnvironment:
     ; Environment comes into rdi:rsi
     ; Key comes into rdx:rcx
@@ -427,12 +467,12 @@ findInEnvironmentPointer:
         push r13
         push r12
 
-        
+
         ; Check if the input is a cons.
         ; It might be a null if the variable isn't in the environment
         ; TODO make a clearer error message about this
-        cmp edi, pair_t
-        errorNe "Looked up variable is not in environment"
+    ;    cmp edi, pair_t
+    ;    errorNe "Looked up variable is not in environment"
 
 
         mov r8, [rsi]   ; car type
@@ -453,9 +493,8 @@ findInEnvironmentPointer:
         lea r14, [r9+16] ; (cdr (car x)) type
 
 
-        ; Again sanity check
-        cmp r12, symbol_t
-        jne exitError
+
+
 
 
 
@@ -472,8 +511,8 @@ findInEnvironmentPointer:
         pop r11
 
         cmp rax, 0
-        je .success 
-        
+        je .success
+
     .tryNext:
         mov rdi, r10
         mov rsi, r11
@@ -606,7 +645,7 @@ eval:
         mov [rsi+8], rcx
         mov [rsi+16], r10
         mov [rsi+24], r11
-        
+
         add qword [alloc_ptr], 32
 
         mov rdi, sc_fun_t_full
@@ -652,7 +691,7 @@ eval:
 
         jmp  handleSet; tail call
 
-    .notSpecialForm: 
+    .notSpecialForm:
         mov rdi, [r10] ; Get the car
         mov rsi, [r10 + 8]
 
@@ -665,7 +704,7 @@ eval:
         pop r10
         pop rcx
         pop rdx
-        
+
         cmp rdi, bi_fun_t ; built-in function
         jne .maybeSchemeFunction
 
@@ -677,7 +716,7 @@ eval:
         jmp .endPair
 
     .maybeSchemeFunction: ; Maybe a lambda?
-        cmp edi, sc_fun_t 
+        cmp edi, sc_fun_t
         jne exitError
 
         mov r8, [r10 + 16] ; get the cdr
@@ -686,10 +725,10 @@ eval:
         call handleSchemeApplication
 
         jmp .endPair
-        
-        
+
+
     .endPair:
-        
+
         jmp .return
 
         jmp exitError ; NOT IMPLEMENTED
@@ -711,7 +750,7 @@ eval:
         jmp .return
 
 
-    .return: 
+    .return:
 
         ret
 
@@ -733,7 +772,7 @@ handleIf:
         jne exitError
 
         mov r12, [rsi] ; (car (cdr exp)) type (the condition)
-        mov r13, [rsi+8] ; (car (cdr exp)) 
+        mov r13, [rsi+8] ; (car (cdr exp))
         mov r14, [rsi+16] ; (cdr (cdr exp)) type
         mov r15, [rsi+24] ; (cdr (cdr exp))
 
@@ -855,11 +894,11 @@ handleBuiltInApplication:
     push r15
 
     mov rax, 0
-    
+
     .argEvalLoop:
         cmp r8, null_t
         je .break
-        
+
         cmp r8d, pair_t
         jne exitError
 
@@ -904,16 +943,16 @@ handleBuiltInApplication:
         mov rdi, rax
 
         call rsi
-        
+
         ; Now the answer should be in rdi:rsi
         ; Time to clean the stack
 
         lea r12, [r12*2]
         lea rsp, [rsp + r12*8] ; subtract rsi*16 from the stack
         ; This is equivalent to popping r12*2 times
-        
+
     .return:
-    
+
         pop r15
         pop r14
         pop r13
@@ -927,7 +966,7 @@ handleSchemeApplication:
     ; rdi:rsi is the function. we know it's a sc_fun_t
     ; rdx:rcx is the environment of course
     ; r8:r9 is the argument list
-    ; 
+    ;
     ; rdi:rsi value out
     ; Let's assume that there is no environment out
     ;
@@ -950,7 +989,7 @@ handleSchemeApplication:
     ; Now rdi:rsi contains the list we want to insert into env
     mov r8, rdi
     mov r9, rsi
-    
+
     pop rsi
 
     mov rax, rsi
@@ -978,7 +1017,7 @@ handleSchemeApplication:
     call addDefineNodeToEnvironment
 
     pop r11
-    
+
 
     ; Now the new environment is in rdi:rsi. Move it to rdx:rcx
     mov rdx, rdi
@@ -997,7 +1036,7 @@ handleSchemeApplication:
     jmp evalSequence; tail-call
 
 
-handleDefine: 
+handleDefine:
     ;
     ; rdi:rsi
     ; rdx:rcx is the environment
@@ -1009,7 +1048,7 @@ handleDefine:
     mov r9, [rsi+8]
     mov r10, [rsi+16]
     mov r11, [rsi+24]
-    
+
     push r9
     push r8
 
@@ -1060,7 +1099,7 @@ handleSet:
     mov r9, [rsi+8]
     mov r10, [rsi+16]
     mov r11, [rsi+24]
-    
+
     push r9
     push r8
 
@@ -1143,7 +1182,7 @@ evalSequence:
         pop rdx
         pop rcx
         pop rdi
-        pop rsi 
+        pop rsi
 
 
         jmp .loop
@@ -1155,5 +1194,3 @@ evalSequence:
         mov rsi, r9
 
         jmp eval
-
-        
