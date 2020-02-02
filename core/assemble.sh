@@ -1,2 +1,2 @@
-nasm -felf64 interp.asm
-ld interp.o -o interp
+nasm -felf64 Leya.asm
+ld Leya.o -o Leya

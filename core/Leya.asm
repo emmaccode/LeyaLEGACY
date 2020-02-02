@@ -47,10 +47,11 @@ SECTION .data
     lambdaSymbol: db "lambda",0
     beginSymbol: db "begin",0
     ; memory tag define JUMP > Add to environment Define.
-    defineSymbol: db "var",0
+    defineSymbol: db "function",0
     letSymbol: db "let",0
-    setSymbol: db "set",0
+    setSymbol: db "var",0
     numPrintBuffLen equ 80
+    lemmaSymbol: db "lemma",0
 
 SECTION .bss
     heap_start: resq 1
